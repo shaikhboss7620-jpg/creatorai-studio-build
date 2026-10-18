@@ -1,26 +1,63 @@
-name: Android CI
+name: Build CreatorAI Studio APK
 
 on:
+  workflow_dispatch:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
-    - name: set up JDK 11
-      uses: actions/setup-java@v4
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-        cache: gradle
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-    - name: Build with Gradle
-      run: ./gradlew build
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Locate and extract source ZIP
+        shell: bash
+        run: |
+          mkdir -p project /tmp/creatorai-kit
+          ZIP=$(find . -type f -iname '*Android_Source*.zip' -print -quit)
+          if [ -z "$ZIP" ]; then
+            KIT=$(find . -maxdepth 4 -type f -iname '*Cloud_Build_Kit*.zip' -print -quit)
+            if [ -n "$KIT" ]; then
+              unzip -q "$KIT" -d /tmp/creatorai-kit
+              ZIP=$(find /tmp/creatorai-kit -type f -iname '*Android_Source*.zip' -print -quit)
+            fi
+          fi
+          if [ -z "$ZIP" ]; then
+            echo 'ERROR: Android source ZIP not found. Upload the Cloud Build Kit ZIP or Android source ZIP to the repository.'
+            exit 1
+          fi
+          unzip -q "$ZIP" -d project
+          SETTINGS=$(find project -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)
+          if [ -z "$SETTINGS" ]; then
+            echo 'ERROR: No Gradle settings file found in the ZIP.'
+            find project -maxdepth 4 -type f | head -80
+            exit 1
+          fi
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+
+      - name: Build debug APK
+        run: gradle -p "$PROJECT_DIR" assembleDebug
+
+      - name: Upload APK artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CreatorAI-Studio-APK
+          path: project/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
