@@ -1,0 +1,42 @@
+name: Build CreatorAI Studio APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build APK
+        run: |
+          if [ ! -f "CreatorAI_Studio_Android_Source.zip" ]; then
+            echo "Source ZIP not found"
+            exit 1
+          fi
+          mkdir project
+          unzip -q CreatorAI_Studio_Android_Source.zip -d project
+          find project -name gradlew -type f -exec chmod +x {} \;
+          cd project
+          if [ -f gradlew ]; then
+            ./gradlew assembleDebug
+          else
+            gradle assembleDebug
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CreatorAI-Studio-APK
+          path: project/**/build/outputs/apk/debug/*.apk
